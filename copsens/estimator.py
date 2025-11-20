@@ -311,3 +311,78 @@ class CopSens(BaseEstimator):
             results['est_df'] = pd.DataFrame(est_data)
             
         return results
+    
+    def predict_bounds(self, X, R2=[1.0]):
+        """
+        Predicts causal bounds (Lower, Naive, Upper) for query points X.
+        
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Query points (treatment).
+        R2 : list of floats
+            Sensitivity parameters (0.0 to 1.0).
+            
+        Returns
+        -------
+        dict
+            Key: R2 value (float)
+            Value: DataFrame with columns ['lower', 'naive', 'upper']
+        """
+        X = np.array(X)
+        R2 = np.array(R2)
+        
+        # 1. Get Naive Predictions (E[Y|T])
+        if self.model_type == 'gaussian':
+            y_naive = self.outcome_model_.predict(X)
+        else: # Binary
+            # Need estimates on the latent scale (Z score), not probability scale
+            # Probit: Z = X @ beta
+            T_const = sm.add_constant(X, has_constant='add')
+            z_naive = self.outcome_model_.predict(T_const, linear=True) # Latent scale
+            y_naive = norm.cdf(z_naive) # Probability scale
+            
+        # 2. Get Latent Confounder Embeddings U(X)
+        if self.latent_model == 'pca':
+            u_x = self.pca_model_.transform(X)
+        else:
+            u_x, _ = get_torch_embeddings(self.nn_model_, X)
+            
+        # 3. Whiten the Latents (Normalize by covariance)
+        # Calculate cov(U|t)^(-1/2)
+        vals, vecs = np.linalg.eigh(self.cov_u_t_)
+        vals = np.maximum(vals, 1e-10)
+        cov_halfinv = vecs @ np.diag(vals**-0.5) @ vecs.T
+        
+        # 4. Calculate Confounding Magnitude per sample
+        # Norm of the whitened latent vector: || cov^(-1/2) @ u ||
+        # Vectorized for batch X
+        u_whitened = u_x @ cov_halfinv
+        u_norm = np.sqrt(np.sum(u_whitened**2, axis=1))
+        
+        # 5. Compute Bounds
+        results = {}
+        
+        for r2_val in R2:
+            # Max Bias (on latent scale) = sigma_y * ||U_white|| * sqrt(R2)
+            # For binary, sigma_y is implicitly 1.0 in Probit latent space
+            sigma = self.sigma_y_t_ if self.model_type == 'gaussian' else 1.0
+            bias_mag = sigma * u_norm * np.sqrt(r2_val)
+            
+            if self.model_type == 'gaussian':
+                lower = y_naive - bias_mag
+                upper = y_naive + bias_mag
+                naive_out = y_naive
+            else:
+                # For binary, apply bounds on Z-score, then map back to Probability
+                lower = norm.cdf(z_naive - bias_mag)
+                upper = norm.cdf(z_naive + bias_mag)
+                naive_out = y_naive
+                
+            results[r2_val] = pd.DataFrame({
+                'lower': lower,
+                'naive': naive_out,
+                'upper': upper
+            })
+            
+        return results
