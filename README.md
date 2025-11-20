@@ -102,7 +102,7 @@ print(res_bin['est_df'].head())
 ```
 
 ### Causal Bounds
-Bounds on the ATE $\mathbf{E}[ Y | \operatorname{do}(X = \mathbf{x}) ]$
+Bounds on the ATE $\mathbf{E}[ Y | \text{do}(X = \mathbf{x}) ]$
 ```python
 # ... training code ...
 cs_torch.fit(T, y)
