@@ -56,13 +56,20 @@ def fit_torch_model(tr_data, n_components, user_model=None, epochs=100, lr=1e-3)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_dim = tr_data.shape[1]
     
-    if user_model is None:
+    # --- FIX STARTS HERE ---
+    # Check if user_model is None OR the string 'vae'
+    if user_model is None or user_model == 'vae':
         model = SimpleVAE(input_dim, n_components).to(device)
     else:
+        # Assume it's a proper nn.Module
         model = user_model.to(device)
+    # --- FIX ENDS HERE ---
     
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    dataset = TensorDataset(torch.FloatTensor(tr_data))
+    
+    # Ensure data is float
+    tensor_x = torch.FloatTensor(tr_data)
+    dataset = TensorDataset(tensor_x)
     loader = DataLoader(dataset, batch_size=64, shuffle=True)
     
     model.train()
