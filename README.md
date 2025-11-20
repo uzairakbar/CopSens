@@ -101,6 +101,24 @@ res_bin = cs_bin.calibrate(t1, t2, calitype='null', gamma=gamma_guess, R2=[0.2])
 print(res_bin['est_df'].head())
 ```
 
+### Causal Bounds
+Bounds on the ATE $\mathbf{E}[ Y | \operatorname{do}(X = \mathbf{x}) ]$
+```python
+# ... training code ...
+cs_torch.fit(T, y)
+
+# 1. Specify query point(s) x* (can be a batch)
+x_star = T[0:5] # First 5 images
+
+# 2. Get bounds for specific sensitivity parameters R2
+# Returns a dictionary keyed by R2
+bounds = cs_torch.predict_bounds(x_star, R2=[0.1, 0.5, 1.0])
+
+# 3. Access results
+print("--- Bounds for R^2 = 0.5 ---")
+print(bounds[0.5])
+```
+
 ## Reference
 
 [J. Zheng, A. D’Amour, & A. Franks, "Copula-based Sensitivity Analysis for Multi-Treatment Causal Inference with Unobserved Confounding," arXiv:2102.09412, 2021](https://arxiv.org/abs/2102.09412).
